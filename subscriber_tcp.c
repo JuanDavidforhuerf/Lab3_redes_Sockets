@@ -79,6 +79,8 @@ int main(int argc, char *argv[]) {
     printf("[Subscriber] Esperando mensajes... (Ctrl+C para salir)\n\n");
 
     char buffer[TAM_BUFFER];
+    char acumulado[TAM_BUFFER]; // bytes recibidos que aún no forman una línea completa
+    int largo_acumulado = 0;
 
     // desde aqui el subscriber no envía más mensajes propios, solo se queda esperando lo que el broker le reenvíe
     while (1) {
@@ -92,17 +94,36 @@ int main(int argc, char *argv[]) {
             break;
         }
 
-        // Quitar el salto de línea final si vino incluido.
-        buffer[strcspn(buffer, "\n")] = '\0';
+        // TCP es un FLUJO de bytes: un solo recv() puede traer varios
+        // mensajes pegados o solo parte de uno. Acumulamos los bytes y
+        // procesamos una línea completa (terminada en '\n') a la vez.
+        if (largo_acumulado + bytes_leidos >= TAM_BUFFER) {
+            largo_acumulado = 0; // línea demasiado larga: se descarta
+        }
+        memcpy(acumulado + largo_acumulado, buffer, bytes_leidos);
+        largo_acumulado += bytes_leidos;
 
-        //  Parseo del mensaje recibido: MSG|tema|contenido 
-        char tipo[8] = {0}; //tipo de mensaje
-        char tema_recibido[64] = {0}; //tema asociado al mensaje (partido)
-        char contenido[TAM_BUFFER] = {0};  //contenido del mensaje (evento durante el partido)
+        char *fin_linea;
+        while ((fin_linea = memchr(acumulado, '\n', largo_acumulado)) != NULL) {
+            int largo_linea = fin_linea - acumulado;
 
-        char copia[TAM_BUFFER];
-        strncpy(copia, buffer, TAM_BUFFER - 1);
-        copia[TAM_BUFFER - 1] = '\0';
+            char linea[TAM_BUFFER];
+            memcpy(linea, acumulado, largo_linea);
+            linea[largo_linea] = '\0';
+
+            // Descartar la línea ya extraída (+1 por el '\n')
+            int restante = largo_acumulado - (largo_linea + 1);
+            memmove(acumulado, fin_linea + 1, restante);
+            largo_acumulado = restante;
+
+            // --- Parseo del mensaje recibido: MSG|tema|contenido ---
+            char tipo[8] = {0};
+            char tema_recibido[64] = {0};
+            char contenido[TAM_BUFFER] = {0};  //contenido del mensaje (evento durante el partido)
+
+            char copia[TAM_BUFFER];
+            strncpy(copia, linea, TAM_BUFFER - 1);
+            copia[TAM_BUFFER - 1] = '\0';
 
         char *token = strtok(copia, "|");
         if (token != NULL) strncpy(tipo, token, sizeof(tipo) - 1);
@@ -117,7 +138,7 @@ int main(int argc, char *argv[]) {
             printf(">> [%s] %s\n", tema_recibido, contenido);
         } else {
             // Por si llega algo con otro formato por error
-            printf(">> (mensaje sin formato esperado): %s\n", buffer);
+            printf(">> (mensaje sin formato esperado): %s\n", linea);
         }
     }
 

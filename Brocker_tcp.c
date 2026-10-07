@@ -36,6 +36,8 @@ typedef struct {
     int socket_fd;             // -1 si esta posición del arreglo está libre
     char tema[TAM_TEMA];       // tema al que está suscrito (vacío si no aplica)
     int es_subscriber;         // 1 si ya mandó un SUB
+    char acumulado[TAM_BUFFER]; // bytes recibidos que aún no forman una línea completa
+    int largo_acumulado;       // cantidad de bytes válidos en "acumulado"
 } Cliente;
 
 Cliente clientes[MAX_CLIENTES];
@@ -46,6 +48,7 @@ void inicializar_clientes() {
         clientes[i].socket_fd = -1;
         clientes[i].tema[0] = '\0';
         clientes[i].es_subscriber = 0;
+        clientes[i].largo_acumulado = 0;
     }
 }
 
@@ -56,6 +59,7 @@ void agregar_cliente(int socket_fd) {
             clientes[i].socket_fd = socket_fd;
             clientes[i].tema[0] = '\0';
             clientes[i].es_subscriber = 0;
+            clientes[i].largo_acumulado = 0;
             return;
         }
     }
@@ -70,6 +74,7 @@ void eliminar_cliente(int socket_fd) {
             clientes[i].socket_fd = -1;
             clientes[i].es_subscriber = 0;
             clientes[i].tema[0] = '\0';
+            clientes[i].largo_acumulado = 0;
             return;
         }
     }
@@ -233,7 +238,8 @@ int main() {
                 char buffer[TAM_BUFFER];
                 memset(buffer, 0, TAM_BUFFER);
 
-                // recv(): como select() ya nos confirmó que hay datos listos
+                // recv(): como select() ya nos confirmó que hay datos
+                // listos, esta llamada NO bloquea en este caso.
                 int bytes_leidos = recv(fd, buffer, TAM_BUFFER - 1, 0);
 
                 if (bytes_leidos <= 0) {
@@ -242,7 +248,30 @@ int main() {
                     close(fd);
                     eliminar_cliente(fd);
                 } else {
-                    procesar_mensaje(fd, buffer);
+                    
+                    Cliente *c = &clientes[i];
+
+                    if (c->largo_acumulado + bytes_leidos >= TAM_BUFFER) {
+                        c->largo_acumulado = 0; // línea demasiado larga: se descarta
+                    }
+                    memcpy(c->acumulado + c->largo_acumulado, buffer, bytes_leidos);
+                    c->largo_acumulado += bytes_leidos;
+
+                    char *fin_linea;
+                    while ((fin_linea = memchr(c->acumulado, '\n', c->largo_acumulado)) != NULL) {
+                        int largo_linea = fin_linea - c->acumulado;
+
+                        char linea[TAM_BUFFER];
+                        memcpy(linea, c->acumulado, largo_linea);
+                        linea[largo_linea] = '\0';
+
+                        procesar_mensaje(fd, linea);
+
+                        // Descartar la línea ya procesada 
+                        int restante = c->largo_acumulado - (largo_linea + 1);
+                        memmove(c->acumulado, fin_linea + 1, restante);
+                        c->largo_acumulado = restante;
+                    }
                 }
             }
         }
