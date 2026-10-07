@@ -1,6 +1,4 @@
-/*
- * subscriber_tcp.c
- * 
+/* 
  * suscriptor del sistema, usando TCP. Se conecta al brocker, se suscribe a un partido,
  * y luego se queda esperando en los mensajes que el broker le
  * reenvíe, imprimiéndolos en pantalla en tiempo real.
@@ -123,7 +121,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // close(): cierra la conexión TCP de forma ordenada.
+    // cierra la conexión TCP de forma ordenada.
     close(socket_fd);
 
     return 0;

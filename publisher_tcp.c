@@ -1,9 +1,6 @@
 /*
- * publisher_tcp.c
- * ---------------------------------------------------------------------
- * Publisher (publicador) del sistema publicador-suscriptor, usando
- * sockets TCP. Se conecta al broker y envía mensajes de eventos de un
- * partido (tema), tecleados interactivamente desde la terminal.
+ * publicador del sistema , usando TCP. Se conecta al broker y envía mensajes de eventos de un
+ * partido, escritos desde la terminal.
  *
  * Protocolo de aplicación:
  *   PUB|<tema>|<contenido>\n
@@ -13,10 +10,6 @@
  *
  * Ejecutar:
  *   ./publisher_tcp <IP_broker> <puerto_broker> <tema>
- *
- * Ejemplo:
- *   ./publisher_tcp 127.0.0.1 5000 EquipoA_vs_EquipoB
- * ---------------------------------------------------------------------
  */
 
 #include <stdio.h>
@@ -41,10 +34,11 @@ int main(int argc, char *argv[]) {
     int puerto_broker = atoi(argv[2]);
     const char *tema = argv[3];
 
-    // socket(): crea el descriptor del socket.
+    
+    
+    int socket_fd = socket(AF_INET, SOCK_STREAM, 0); // crea el descriptor del socket.
     //   AF_INET     -> IPv4
     //   SOCK_STREAM -> TCP (orientado a conexión)
-    int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_fd < 0) {
         perror("Error al crear el socket");
         exit(EXIT_FAILURE);
@@ -52,20 +46,17 @@ int main(int argc, char *argv[]) {
 
     struct sockaddr_in direccion_broker;
     direccion_broker.sin_family = AF_INET;
-    direccion_broker.sin_port = htons(puerto_broker); // htons(): host-to-network short
+    direccion_broker.sin_port = htons(puerto_broker); // host-to-network short
 
-    // inet_pton(): convierte la IP en formato texto (ej. "127.0.0.1")
-    // a su representación binaria dentro de la estructura sockaddr_in.
+    // convierte la IP en formato texto a su representación binaria dentro de la estructura sockaddr_in.
     if (inet_pton(AF_INET, ip_broker, &direccion_broker.sin_addr) <= 0) {
         fprintf(stderr, "Direccion IP invalida: %s\n", ip_broker);
         close(socket_fd);
         exit(EXIT_FAILURE);
     }
 
-    // connect(): establece la conexión TCP con el broker. Internamente
-    // dispara el three-way handshake (SYN, SYN-ACK, ACK) antes de que
-    // la función retorne exitosamente.
-    if (connect(socket_fd, (struct sockaddr *)&direccion_broker, sizeof(direccion_broker)) < 0) {
+    if (connect(socket_fd, (struct sockaddr *)&direccion_broker, sizeof(direccion_broker)) < 0) { //establece la conexión TCP con el broker. Internamente dispara el three-way handshake
+
         perror("Error al conectar con el broker");
         close(socket_fd);
         exit(EXIT_FAILURE);
@@ -84,7 +75,7 @@ int main(int argc, char *argv[]) {
         printf("Evento #%d > ", contador + 1);
         fflush(stdout);
 
-        // fgets(): lee una línea completa escrita por el usuario.
+        // lee una línea completa escrita por el usuario.
         if (fgets(linea, sizeof(linea), stdin) == NULL) {
             break; // EOF (ej. Ctrl+D)
         }
@@ -101,17 +92,13 @@ int main(int argc, char *argv[]) {
         }
 
         // Construir el mensaje según el protocolo: PUB|tema|contenido
-        // Se usa TAM_BUFFER*2 para que el compilador no advierta sobre
-        // una posible truncación al concatenar tema+linea en un buffer
-        // del mismo tamaño que cada uno por separado.
+        // Se usa TAM_BUFFER*2 para que el compilador no advierta sobre una posible truncación al concatenar tema+linea en un buffer del mismo tamaño que cada uno por separado.
         char mensaje_grande[TAM_BUFFER * 2];
         snprintf(mensaje_grande, sizeof(mensaje_grande), "PUB|%s|%s\n", tema, linea);
         strncpy(mensaje, mensaje_grande, TAM_BUFFER - 1);
         mensaje[TAM_BUFFER - 1] = '\0';
 
-        // send(): envía los bytes del mensaje por el socket TCP ya
-        // conectado. TCP se encarga de garantizar que lleguen completos
-        // y en orden al broker.
+        // envía los bytes del mensaje por el socket TCP ya conectado
         ssize_t bytes_enviados = send(socket_fd, mensaje, strlen(mensaje), 0);
 
         if (bytes_enviados < 0) {
@@ -125,8 +112,7 @@ int main(int argc, char *argv[]) {
 
     printf("[Publisher] Se publicaron %d mensaje(s) en total.\n", contador);
 
-    // close(): cierra la conexión TCP de forma ordenada (dispara el
-    // intercambio de FIN/ACK con el broker).
+    // cierra la conexión TCP de forma ordenada
     close(socket_fd);
 
     return 0;
