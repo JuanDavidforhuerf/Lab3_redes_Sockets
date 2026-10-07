@@ -1,23 +1,19 @@
 /*
- * broker_tcp.c
- * ---------------------------------------------------------------------
  * Broker (intermediario) del sistema publicador-suscriptor, usando
  * sockets TCP y multiplexación de E/S con select() (un solo hilo
  * atiende a todos los clientes conectados simultáneamente).
  *
  * Protocolo de aplicación (texto plano, un mensaje por línea):
  *
- *   SUB|<tema>|                      -> un Subscriber se suscribe a <tema>
- *   PUB|<tema>|<contenido>           -> un Publisher publica <contenido> en <tema>
- *   MSG|<tema>|<contenido>           -> el Broker reenvía el mensaje a cada
- *                                       Subscriber suscrito a <tema>
+ *   SUB|<tema>|                       un Subscriber se suscribe a <tema>
+ *   PUB|<tema>|<contenido>            un Publisher publica <contenido> en <tema>
+ *   MSG|<tema>|<contenido>            el Broker reenvía el mensaje a cada Subscriber suscrito a <tema>
  *
  * Compilar:
  *   gcc broker_tcp.c -o broker_tcp
  *
  * Ejecutar:
  *   ./broker_tcp
- * ---------------------------------------------------------------------
  */
 
 #include <stdio.h>
@@ -34,11 +30,8 @@
 #define TAM_BUFFER 1024
 #define TAM_TEMA 64
 
-/*
- * Representa a un cliente conectado. Al usar select() en un solo hilo,
- * NO necesitamos mutex: solo un flujo de ejecución toca este arreglo
- * en cada momento, así que no hay condiciones de carrera posibles.
- */
+
+ //Representa a un cliente conectado.
 typedef struct {
     int socket_fd;             // -1 si esta posición del arreglo está libre
     char tema[TAM_TEMA];       // tema al que está suscrito (vacío si no aplica)
@@ -47,7 +40,7 @@ typedef struct {
 
 Cliente clientes[MAX_CLIENTES];
 
-/* Inicializa el arreglo de clientes: todas las posiciones libres. */
+//Inicializa el arreglo de clientes. 
 void inicializar_clientes() {
     for (int i = 0; i < MAX_CLIENTES; i++) {
         clientes[i].socket_fd = -1;
@@ -56,7 +49,7 @@ void inicializar_clientes() {
     }
 }
 
-/* Busca la primera posición libre del arreglo y registra ahí al nuevo cliente. */
+// Busca la primera posición libre del arreglo y registra ahí al nuevo cliente. 
 void agregar_cliente(int socket_fd) {
     for (int i = 0; i < MAX_CLIENTES; i++) {
         if (clientes[i].socket_fd == -1) {
@@ -70,7 +63,7 @@ void agregar_cliente(int socket_fd) {
     close(socket_fd);
 }
 
-/* Libera la posición del arreglo correspondiente a socket_fd. */
+// Libera la posición del arreglo correspondiente a socket_fd.
 void eliminar_cliente(int socket_fd) {
     for (int i = 0; i < MAX_CLIENTES; i++) {
         if (clientes[i].socket_fd == socket_fd) {
@@ -82,7 +75,7 @@ void eliminar_cliente(int socket_fd) {
     }
 }
 
-/* Registra el tema de suscripción de un cliente ya conectado (comando SUB). */
+// Registra el tema de suscripción de un cliente ya conectado (comando SUB).    
 void registrar_suscripcion(int socket_fd, const char *tema) {
     for (int i = 0; i < MAX_CLIENTES; i++) {
         if (clientes[i].socket_fd == socket_fd) {
@@ -95,10 +88,9 @@ void registrar_suscripcion(int socket_fd, const char *tema) {
     }
 }
 
-/*
- * Reenvía el mensaje publicado a todos los subscribers cuyo tema
- * coincida. Este es el corazón del patrón pub-sub.
- */
+
+// Reenvía el mensaje publicado a todos los subscribers cuyo temacoincida
+
 void difundir_mensaje(const char *tema, const char *contenido) {
     char mensaje_salida[TAM_BUFFER];
     snprintf(mensaje_salida, TAM_BUFFER, "MSG|%s|%s\n", tema, contenido);
@@ -119,12 +111,10 @@ void difundir_mensaje(const char *tema, const char *contenido) {
     printf("[Broker] Mensaje del tema '%s' difundido a %d suscriptor(es)\n", tema, enviados);
 }
 
-/*
- * Procesa un mensaje recién leído de un cliente: lo parsea según el
- * protocolo "TIPO|TEMA|CONTENIDO" y actúa en consecuencia.
- */
+//Procesa un mensaje recién leído de un cliente: lo parsea según el protocolo "TIPO|TEMA|CONTENIDO"
+ 
 void procesar_mensaje(int socket_fd, char *buffer) {
-    buffer[strcspn(buffer, "\n")] = '\0'; // quitar salto de línea final si vino
+    buffer[strcspn(buffer, "\n")] = '\0'; // quitar salto de línea final si viene
 
     char tipo[8] = {0};
     char tema[TAM_TEMA] = {0};
@@ -157,7 +147,7 @@ int main() {
 
     inicializar_clientes();
 
-    // socket(): AF_INET (IPv4), SOCK_STREAM (TCP), protocolo por defecto.
+    //AF_INET (IPv4), SOCK_STREAM (TCP), protocolo por defecto.
     socket_servidor = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_servidor < 0) {
         perror("Error al crear el socket");
@@ -172,14 +162,14 @@ int main() {
     direccion_servidor.sin_addr.s_addr = INADDR_ANY;
     direccion_servidor.sin_port = htons(PORT);
 
-    // bind(): asocia el socket a la IP/puerto locales.
+    // asocia el socket a la IP/puerto locales.
     if (bind(socket_servidor, (struct sockaddr *)&direccion_servidor, sizeof(direccion_servidor)) < 0) {
         perror("Error en bind");
         close(socket_servidor);
         exit(EXIT_FAILURE);
     }
 
-    // listen(): pone el socket en modo escucha pasiva, cola de hasta 10 conexiones pendientes.
+    //  pone el socket en modo escucha pasiva, cola de hasta 10 conexiones pendientes.
     if (listen(socket_servidor, 10) < 0) {
         perror("Error en listen");
         close(socket_servidor);
@@ -189,14 +179,14 @@ int main() {
     printf("[Broker] Escuchando en el puerto %d...\n", PORT);
 
     while (1) {
-        // FD_ZERO(): limpia el conjunto antes de reconstruirlo en cada vuelta del bucle.
+        // limpia el conjunto antes de reconstruirlo en cada vuelta del bucle.
         FD_ZERO(&read_fds);
 
-        // Siempre vigilamos el socket servidor, para detectar conexiones nuevas.
+        // Siempre se escucha el socket servidor, para detectar conexiones nuevas.
         FD_SET(socket_servidor, &read_fds);
         fd_maximo = socket_servidor;
 
-        // Agregamos también cada socket de cliente ya conectado.
+        // se agrega cada socket de cliente ya conectado.
         for (int i = 0; i < MAX_CLIENTES; i++) {
             int fd = clientes[i].socket_fd;
             if (fd != -1) {
@@ -218,13 +208,12 @@ int main() {
             continue;
         }
 
-        // ¿Hay una conexión nueva esperando en el socket servidor?
+        // revisa si hay una conexion nueva esperando en el socket servidor.
         if (FD_ISSET(socket_servidor, &read_fds)) {
             struct sockaddr_in direccion_cliente;
             socklen_t tam_direccion = sizeof(direccion_cliente);
 
-            // accept(): acepta la conexión entrante y devuelve un socket
-            // NUEVO, exclusivo para hablar con ese cliente.
+            // accept(): acepta la conexión entrante y devuelve un socket nuevo para comunicarse con ese cliente.
             int socket_cliente = accept(socket_servidor, (struct sockaddr *)&direccion_cliente, &tam_direccion);
 
             if (socket_cliente >= 0) {
@@ -236,7 +225,7 @@ int main() {
             }
         }
 
-        // Revisamos cada cliente para ver si tiene un mensaje listo para leer.
+        // se revisa cada cliente para ver si tiene un mensaje para leer.
         for (int i = 0; i < MAX_CLIENTES; i++) {
             int fd = clientes[i].socket_fd;
 
@@ -244,8 +233,7 @@ int main() {
                 char buffer[TAM_BUFFER];
                 memset(buffer, 0, TAM_BUFFER);
 
-                // recv(): como select() ya nos confirmó que hay datos
-                // listos, esta llamada NO bloquea en este caso.
+                // recv(): como select() ya nos confirmó que hay datos listos
                 int bytes_leidos = recv(fd, buffer, TAM_BUFFER - 1, 0);
 
                 if (bytes_leidos <= 0) {
